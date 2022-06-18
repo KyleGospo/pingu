@@ -56,6 +56,7 @@ const (
 
 type options struct {
 	Version bool `short:"V" long:"version" description:"Show version"`
+	Count   int  `short:"c" long:"count" default:"20" description:"Stop after <count> replies"`
 }
 
 func main() {
@@ -106,7 +107,7 @@ func run(cliArgs []string) (exitCode, error) {
 		return exitCodeErrArgs, errors.New("too many arguments")
 	}
 
-	pinger, err := initPinger(args[0])
+	pinger, err := initPinger(args[0], opts)
 	if err != nil {
 		return exitCodeOK, fmt.Errorf("an error occurred while initializing pinger: %w", err)
 	}
@@ -118,11 +119,13 @@ func run(cliArgs []string) (exitCode, error) {
 	return exitCodeOK, nil
 }
 
-func initPinger(host string) (*ping.Pinger, error) {
+func initPinger(host string, opts options) (*ping.Pinger, error) {
 	pinger, err := ping.NewPinger(host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init pinger %w", err)
 	}
+
+	pinger.Count = opts.Count
 
 	// Listen for Ctrl-C.
 	c := make(chan os.Signal, 1)
@@ -149,9 +152,9 @@ func initPinger(host string) (*ping.Pinger, error) {
 	return pinger, nil
 }
 
-// nolint:forbidigo
 func pingerOnrecv(pkt *ping.Packet) {
-	fmt.Printf("%s seq=%s %sbytes from %s: ttl=%s time=%s\n",
+	fmt.Fprintf(color.Output,
+		"%s seq=%s %sbytes from %s: ttl=%s time=%s\n",
 		renderASCIIArt(pkt.Seq),
 		color.New(color.FgHiYellow, color.Bold).Sprintf("%d", pkt.Seq),
 		color.New(color.FgHiBlue, color.Bold).Sprintf("%d", pkt.Nbytes),
@@ -161,20 +164,19 @@ func pingerOnrecv(pkt *ping.Packet) {
 	)
 }
 
-// nolint:forbidigo
 func pingerOnFinish(stats *ping.Statistics) {
 	color.New(color.FgWhite, color.Bold).Printf(
 		"\n───────── %s ping statistics ─────────\n",
 		stats.Addr,
 	)
-	fmt.Printf(
+	fmt.Fprintf(color.Output,
 		"%s: %v transmitted => %v received (%v loss)\n",
 		color.New(color.FgHiWhite, color.Bold).Sprintf("PACKET STATISTICS"),
 		color.New(color.FgHiBlue, color.Bold).Sprintf("%d", stats.PacketsSent),
 		color.New(color.FgHiGreen, color.Bold).Sprintf("%d", stats.PacketsRecv),
 		color.New(color.FgHiRed, color.Bold).Sprintf("%v%%", stats.PacketLoss),
 	)
-	fmt.Printf(
+	fmt.Fprintf(color.Output,
 		"%s: min=%v avg=%v max=%v stddev=%v\n",
 		color.New(color.FgHiWhite, color.Bold).Sprintf("ROUND TRIP"),
 		color.New(color.FgHiBlue, color.Bold).Sprintf("%v", stats.MinRtt),
@@ -186,7 +188,7 @@ func pingerOnFinish(stats *ping.Statistics) {
 
 func renderASCIIArt(idx int) string {
 	if len(pingu) <= idx {
-		return strings.Repeat(" ", len(pingu[0]))
+		idx %= len(pingu)
 	}
 
 	line := pingu[idx]
